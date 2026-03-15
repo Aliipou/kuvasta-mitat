@@ -8,7 +8,84 @@
  * Both are lazy-loaded so the page renders fast.
  */
 
-const COCO_SSD_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js';
+/**
+ * WorkerDetector — preferred path.
+ * Runs TF.js inference in a Web Worker so the main thread stays
+ * 60 fps during model loading and prediction.
+ *
+ * Falls back to the main-thread ObjectDetector/HandDetector
+ * if Workers are unavailable (e.g., file:// origin, older browsers).
+ */
+export class WorkerDetector {
+  constructor() {
+    this._worker   = null;
+    this._pending  = null;   // { resolve, reject }
+  }
+
+  get isAvailable() {
+    return typeof Worker !== 'undefined';
+  }
+
+  /** Load worker + model. @param {(msg:string)=>void} onProgress */
+  async load(onProgress) {
+    if (!this.isAvailable) throw new Error('Web Workers not supported');
+    if (this._worker) return;
+
+    this._worker = new Worker(new URL('./worker-detector.js', import.meta.url), { type: 'module' });
+
+    await new Promise((resolve, reject) => {
+      this._worker.onmessage = ({ data }) => {
+        if (data.type === 'PROGRESS') { onProgress?.(data.message); return; }
+        if (data.type === 'READY')    { resolve(); return; }
+        if (data.type === 'ERROR')    { reject(new Error(data.message)); }
+      };
+      this._worker.postMessage({ type: 'LOAD' });
+    });
+
+    // General message router after load
+    this._worker.onmessage = ({ data }) => {
+      if (!this._pending) return;
+      const { resolve, reject } = this._pending;
+      this._pending = null;
+      if (data.type === 'RESULT') resolve(data.detections);
+      else if (data.type === 'ERROR') reject(new Error(data.message));
+    };
+  }
+
+  /** @param {HTMLImageElement} imgEl @param {number} [minScore] */
+  async detect(imgEl, minScore = 0.4) {
+    const imageData = this._toImageData(imgEl);
+    return this._send({ type: 'DETECT', imageData, minScore });
+  }
+
+  /** @param {HTMLImageElement} imgEl */
+  async detectHand(imgEl) {
+    const imageData = this._toImageData(imgEl);
+    return this._send({ type: 'DETECT_HAND', imageData });
+  }
+
+  _toImageData(imgEl) {
+    const c = Object.assign(document.createElement('canvas'), {
+      width: imgEl.naturalWidth, height: imgEl.naturalHeight,
+    });
+    c.getContext('2d').drawImage(imgEl, 0, 0);
+    return c.getContext('2d').getImageData(0, 0, c.width, c.height);
+  }
+
+  _send(msg) {
+    return new Promise((resolve, reject) => {
+      this._pending = { resolve, reject };
+      this._worker.postMessage(msg);
+    });
+  }
+
+  terminate() {
+    this._worker?.terminate();
+    this._worker = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 
 // ── Object detector ──────────────────────────────────────────
 
