@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kuvasta Mitat — Image Measurement Tool</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+</head>
+<body>
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">📐</span>
+      <h1>Kuvasta Mitat</h1>
+    </div>
+
+    <!-- Upload -->
+    <section class="panel" id="panel-upload">
+      <h2>1 · Lataa kuva</h2>
+      <div id="drop-zone" role="button" tabindex="0"
+           aria-label="Drag and drop or click to upload image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        <p>Vedä kuva tähän tai <span>selaa tiedostoja</span></p>
+        <p class="hint">JPG, PNG, WEBP, TIFF</p>
+      </div>
+      <input type="file" id="file-input" accept="image/*" hidden />
+    </section>
+
+    <!-- Tools -->
+    <section class="panel" id="panel-tools">
+      <h2>2 · Työkalut</h2>
+      <div class="tool-group">
+        <button class="tool-btn active" id="tool-draw" title="Piirrä mittausviiva">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+          </svg>
+          Mittaa
+        </button>
+        <button class="tool-btn" id="tool-autodetect" title="Tunnista automaattisesti (TF.js)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          Tunnista
+        </button>
+        <button class="tool-btn" id="tool-hand" title="Mittaa käsi automaattisesti">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 11V6a2 2 0 00-2-2 2 2 0 00-2 2M14 10V4a2 2 0 00-2-2 2 2 0 00-2 2v2M10 10.5V6a2 2 0 00-2-2 2 2 0 00-2 2v8l3 3h1.5c.835 0 1.5-.672 1.5-1.5v-4.5"/>
+          </svg>
+          Käsi
+        </button>
+        <button class="tool-btn danger" id="tool-clear" title="Tyhjennä kaikki viivat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+          Tyhjennä
+        </button>
+      </div>
+    </section>
+
+    <!-- Reference -->
+    <section class="panel" id="panel-reference">
+      <h2>3 · Referenssi</h2>
+      <p class="hint">Oikeaklikkaa viivaa asettaaksesi referenssin, tai syötä arvo tähän.</p>
+      <div class="ref-input-row">
+        <label for="ref-select">Viiva:</label>
+        <select id="ref-select"><option value="">–</option></select>
+      </div>
+      <div class="ref-input-row">
+        <label for="ref-mm">Todellinen pituus:</label>
+        <input type="number" id="ref-mm" min="0.1" step="0.1" placeholder="mm" />
+        <button id="ref-set-btn">Aseta</button>
+      </div>
+      <div id="scale-display" class="scale-badge hidden">
+        <span id="scale-value">–</span> px/mm
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section class="panel" id="panel-results">
+      <h2>4 · Tulokset</h2>
+      <div id="results-table-wrap">
+        <table id="results-table">
+          <thead><tr><th>#</th><th>px</th><th>mm</th><th></th></tr></thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+      <div id="chart-container">
+        <canvas id="results-chart"></canvas>
+      </div>
+      <button id="export-btn" class="btn-secondary" disabled>
+        ⬇ Vie CSV
+      </button>
+    </section>
+  </aside>
+
+  <!-- ── Canvas area ─────────────────────────────────────────── -->
+  <main id="canvas-area">
+    <div id="canvas-wrap">
+      <div id="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <p>Lataa kuva aloittaaksesi</p>
+      </div>
+      <canvas id="main-canvas"></canvas>
+    </div>
+    <div id="status-bar">
+      <span id="status-mode">Tila: Ei kuvaa</span>
+      <span id="status-coords"></span>
+      <span id="status-count"></span>
+    </div>
+  </main>
+
+  <!-- ── ML progress overlay ────────────────────────────────── -->
+  <div id="ml-overlay" class="hidden">
+    <div id="ml-card">
+      <div class="spinner"></div>
+      <p id="ml-label">Ladataan mallia…</p>
+    </div>
+  </div>
+
+  <!-- ── Context menu ───────────────────────────────────────── -->
+  <div id="ctx-menu" class="hidden">
+    <button id="ctx-set-ref">⭐ Aseta referenssiksi</button>
+    <button id="ctx-delete">🗑 Poista viiva</button>
+  </div>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

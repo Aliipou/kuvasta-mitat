@@ -1,8 +1,8 @@
-# 📐 kuvasta-mitat
+# 📐 Kuvasta Mitat
 
-> **Detect and measure object dimensions directly from images — no calibration rig required.**
+> **Measure anything in a photo — directly in the browser. No install required.**
 
-Kuvasta-mitat uses OpenCV edge detection and contour analysis to find every distinct object in a photograph, report its pixel dimensions, and — when you provide a reference object — convert those measurements to real-world millimetres.
+Draw measurement lines on any image, set one line as a physical reference, and every other line instantly converts to real-world millimetres. Includes TF.js-powered automatic object & hand detection.
 
 ---
 
@@ -10,28 +10,36 @@ Kuvasta-mitat uses OpenCV edge detection and contour analysis to find every dist
 
 | | |
 |---|---|
-| 🔍 **Automatic detection** | Canny edges + external contour extraction |
-| 📏 **Physical units** | Pixel-to-mm conversion via a known reference object |
-| 🎨 **Visual output** | Colour-coded bounding boxes with per-object labels |
-| ⚙️ **Fully tunable** | All thresholds exposed as CLI flags |
-| 🧪 **100 % test coverage** | pytest + coverage enforced in CI |
-| 🐍 **Python 3.11+** | Typed, linted, mypy-clean |
+| 📸 **Drag & drop upload** | JPEG, PNG, WEBP, TIFF via HTML5 File API |
+| ✏️ **Canvas ruler** | Click two points → labelled measurement line |
+| 📏 **Pixel → mm** | Set one reference object's real size; all lines convert automatically |
+| 🤖 **Auto-detect** | TF.js COCO-SSD finds objects and measures their bounding boxes |
+| 🖐 **Hand measurement** | Skin-tone segmentation estimates hand width & finger span |
+| 📊 **Chart.js results** | Bar chart + table update in real time |
+| 💾 **CSV export** | Download all measurements as a spreadsheet |
+| 🎨 **Dark UI** | Professional dark-mode interface, no dependencies to install |
 
 ---
 
 ## 🖼️ How it works
 
 ```
-Input image
+Upload image
      │
      ▼
-Gaussian blur  ──►  Canny edges  ──►  Dilate  ──►  Find contours
+Canvas renders image
      │
      ▼
-Filter by area  ──►  Sort largest-first  ──►  Measure (px → mm)
+User draws lines (click → click)
      │
-     ▼
-Annotate canvas  ──►  Save annotated image  +  Print table
+     ├── Right-click line → "Set as reference" → enter mm
+     │        │
+     │        └─► Scale factor computed (px/mm)
+     │                 │
+     │                 └─► All lines labelled in mm
+     │
+     └── "Tunnista" button → TF.js COCO-SSD → auto bounding boxes
+         "Käsi" button     → Skin detection  → hand width
 ```
 
 ---
@@ -39,65 +47,29 @@ Annotate canvas  ──►  Save annotated image  +  Print table
 ## 🚀 Quick start
 
 ```bash
-# 1. Clone & install
-git clone <repo-url>
+# Option A — zero install (Python)
 cd kuvasta_mitat
-pip install -e ".[dev]"
+python -m http.server 5173
+# open http://localhost:5173
 
-# 2. Run on your image (pixel dimensions only)
-kuvasta-mitat photo.jpg --min-area 300
-
-# 3. Add a reference object (e.g. a credit card is 85.6 mm wide)
-kuvasta-mitat photo.jpg --min-area 300 --ref-width-mm 85.6
-
-# 4. Specify which detected object is the reference (default: 0 = largest)
-kuvasta-mitat photo.jpg --min-area 300 --ref-width-mm 85.6 --ref-index 0
+# Option B — Node dev server
+npm install
+npm run dev
+# open http://localhost:5173
 ```
 
-**Sample console output:**
-
-```
-Found 3 object(s) in photo.jpg
-
-  Object  1: 412 × 283 px  (85.6 × 58.8 mm)   ← reference card
-  Object  2: 198 × 145 px  (41.1 × 30.1 mm)
-  Object  3:  87 ×  62 px  (18.1 × 12.9 mm)
-
-  Scale: 4.8131 px/mm
-
-  Annotated image → photo_annotated.jpg
-```
+No build step. All modules are ES native.
 
 ---
 
-## 🎛️ Full CLI reference
+## 📐 Measurement workflow
 
-```
-kuvasta-mitat <image> [options]
-
-positional:
-  image                   Input image (JPG, PNG, TIFF, …)
-
-detection:
-  --min-area PX²          Min contour area to keep     [default: 500]
-  --max-area PX²          Max contour area to keep     [default: unlimited]
-  --canny-low N           Canny lower threshold        [default: 50]
-  --canny-high N          Canny upper threshold        [default: 150]
-  --blur-kernel N         Gaussian blur size (odd)     [default: 5]
-  --no-dilate             Skip edge dilation
-
-physical scale:
-  --ref-width-mm MM       Real-world width of ref obj  [default: None]
-  --ref-index N           Which detection is ref (0=largest) [default: 0]
-
-visualisation:
-  --output / -o PATH      Annotated image path         [default: <stem>_annotated<ext>]
-  --draw-contour          Also draw raw contour outline
-  --no-save               Print table only, skip image
-
-verbosity:
-  --log-level             DEBUG | INFO | WARNING       [default: INFO]
-```
+1. **Drop an image** onto the grey upload zone (or click to browse)
+2. **Click two points** on the canvas to draw a measurement line
+3. **Right-click a line** → *Aseta referenssiksi* → type the real-world length in mm
+4. All lines now show their length in mm
+5. Click **Tunnista** to auto-detect objects, or **Käsi** to measure a hand
+6. Export results as CSV with ⬇ **Vie CSV**
 
 ---
 
@@ -105,52 +77,58 @@ verbosity:
 
 ```
 kuvasta_mitat/
-├── src/kuvasta_mitat/
-│   ├── __init__.py
-│   ├── detector.py      # Edge detection & contour extraction
-│   ├── measurer.py      # Pixel → mm conversion
-│   ├── annotator.py     # Image drawing & file save
-│   └── main.py          # CLI entry point
+├── index.html              Single-page app entry
+├── style.css               Dark-mode design system
+├── src/
+│   ├── app.js              Main orchestrator (wires all modules)
+│   ├── upload.js           HTML5 File API + drag & drop
+│   ├── canvas-ruler.js     Interactive Canvas measurement overlay
+│   ├── measurer.js         px → mm conversion, CSV export
+│   ├── detector.js         TF.js object + hand detection
+│   └── results.js          Results table + Chart.js bar chart
 ├── tests/
-│   ├── test_detector.py
-│   ├── test_measurer.py
-│   ├── test_annotator.py
-│   └── test_main.py
-├── pyproject.toml
-└── README.md
+│   ├── test_measurer.js    Pure-function tests (100% coverage)
+│   └── test_canvas_ruler.js Canvas ruler unit tests
+├── vitest.config.js
+└── package.json
 ```
 
 ---
 
-## 🧪 Running tests
+## 🧪 Testing
 
 ```bash
-pip install -e ".[dev]"
-pytest                        # runs all tests + coverage report
-pytest --cov-report=html      # open htmlcov/index.html for visual coverage
+npm install
+npm test                # Vitest + V8 coverage
+npm run test:ui         # Browser-based test UI
 ```
 
-Coverage is enforced at **100 %** — the CI pipeline fails below that threshold.
+Coverage is enforced at **100%** for all pure logic modules.
 
 ---
 
-## ⚙️ Tuning tips
+## 🎛️ Osatehtävät (Task breakdown)
 
-| Scenario | Suggestion |
-|---|---|
-| Dark object on bright background | Lower `--canny-low` to 20–30 |
-| Many small noise detections | Increase `--min-area` to 1000+ |
-| Object edges merge together | Disable dilation with `--no-dilate` |
-| Low contrast image | Increase `--blur-kernel` to 7 or 9 |
+| Osatehtävä | Vaikeus | Status |
+|---|---|---|
+| Kuvan lataus ja näyttö selaimessa | Aloittelija | ✅ |
+| Piirrettävien mittausviivojen toteutus (Canvas) | Aloittelija/Keskitaso | ✅ |
+| Pikselien muuntaminen fyysisiksi mitoiksi referenssin avulla | Keskitaso | ✅ |
+| Automaattinen referenssin tunnistus ML:n avulla (TF.js COCO-SSD) | Taitava | ✅ |
+| Käden mittaaminen automaattisesti (ihonsävy-segmentointi) | Taitava | ✅ |
+| UI/UX parannukset ja tulosten visuaalinen esitys (Chart.js) | Keskitaso | ✅ |
 
 ---
 
-## 📦 Dependencies
+## 📦 Runtime dependencies
 
-| Package | Purpose |
-|---|---|
-| `opencv-python` | Image processing, edge detection, drawing |
-| `numpy` | Array operations |
+Zero npm runtime dependencies. Everything loads via CDN:
+
+| Library | Purpose | CDN |
+|---|---|---|
+| TensorFlow.js | ML inference | cdn.jsdelivr.net |
+| COCO-SSD | Object detection model | cdn.jsdelivr.net |
+| Chart.js | Results bar chart | cdn.jsdelivr.net |
 
 ---
 
