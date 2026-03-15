@@ -1,137 +1,202 @@
-# 📐 Kuvasta Mitat
+# Kuvasta Mitat
 
-> **Measure anything in a photo — directly in the browser. No install required.**
+> **Measure anything in a photo — zero install, runs entirely in the browser.**
 
-Draw measurement lines on any image, set one line as a physical reference, and every other line instantly converts to real-world millimetres. Includes TF.js-powered automatic object & hand detection.
+Draw measurement lines on any image, set one line as a known physical reference, and every other line converts to real-world millimetres instantly. Includes Web Worker-based TF.js inference, undo/redo, PWA offline support, and automatic large-image downscaling.
+
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Tests](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![No build step](https://img.shields.io/badge/build-none-lightgrey)
+![PWA](https://img.shields.io/badge/PWA-installable-blueviolet)
 
 ---
 
-## ✨ Features
+## Features
 
 | | |
 |---|---|
-| 📸 **Drag & drop upload** | JPEG, PNG, WEBP, TIFF via HTML5 File API |
-| ✏️ **Canvas ruler** | Click two points → labelled measurement line |
-| 📏 **Pixel → mm** | Set one reference object's real size; all lines convert automatically |
-| 🤖 **Auto-detect** | TF.js COCO-SSD finds objects and measures their bounding boxes |
-| 🖐 **Hand measurement** | Skin-tone segmentation estimates hand width & finger span |
-| 📊 **Chart.js results** | Bar chart + table update in real time |
-| 💾 **CSV export** | Download all measurements as a spreadsheet |
-| 🎨 **Dark UI** | Professional dark-mode interface, no dependencies to install |
+| **Drag & drop upload** | JPEG · PNG · WEBP · TIFF — drop or click to browse |
+| **Canvas ruler** | Click two points to draw a labelled measurement line |
+| **Pixel → mm conversion** | Set any line as reference; all others update instantly |
+| **Auto object detection** | TF.js COCO-SSD finds objects and measures bounding boxes |
+| **Hand measurement** | YCbCr skin-tone segmentation estimates hand width and finger span |
+| **Web Worker inference** | TF.js runs off the main thread — UI stays responsive at 60 fps |
+| **Undo / Redo** | Full history stack with deep-clone snapshots (Ctrl+Z / Ctrl+Y) |
+| **Image auto-resize** | Images > 1280 px or > 10 MB are downscaled before inference |
+| **Live results panel** | Chart.js bar chart + measurement table update in real time |
+| **CSV export** | Download all measurements as a spreadsheet in one click |
+| **PWA / Offline** | Service Worker caches all assets — works without internet after first load |
+| **Dark mode UI** | Professional dark-mode design system, zero runtime npm dependencies |
 
 ---
 
-## 🖼️ How it works
+## How it works
 
 ```
-Upload image
-     │
-     ▼
+Drop image
+    │
+    ▼
+resizeIfNeeded()          ← auto-downscale if > 1280 px or > 10 MB
+    │
+    ▼
 Canvas renders image
-     │
-     ▼
+    │
+    ▼
 User draws lines (click → click)
-     │
-     ├── Right-click line → "Set as reference" → enter mm
-     │        │
-     │        └─► Scale factor computed (px/mm)
-     │                 │
-     │                 └─► All lines labelled in mm
-     │
-     └── "Tunnista" button → TF.js COCO-SSD → auto bounding boxes
-         "Käsi" button     → Skin detection  → hand width
+    │                          History.push(snapshot)  ← undo/redo
+    ├── Right-click line → "Set as reference" → enter mm
+    │        │
+    │        └─► computeScale(px, mm)
+    │                 │
+    │                 └─► enrichMeasurements() → all lines labelled in mm
+    │
+    └── "Tunnista" → WorkerDetector (Web Worker)
+                         │  postMessage DETECT
+                         ▼
+                    TF.js COCO-SSD (off-thread)
+                         │
+                         └─► auto bounding-box lines added to canvas
+
+    "Käsi" → WorkerDetector DETECT_HAND
+                    │
+                    └─► YCbCr skin segmentation → hand width estimate
 ```
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 ```bash
-# Option A — zero install (Python)
+# Option A — zero install (Python stdlib)
 cd kuvasta_mitat
 python -m http.server 5173
 # open http://localhost:5173
 
-# Option B — Node dev server
+# Option B — Node dev server with hot reload
 npm install
 npm run dev
 # open http://localhost:5173
 ```
 
-No build step. All modules are ES native.
+No build step required. All modules are native ES modules loaded directly by the browser.
 
 ---
 
-## 📐 Measurement workflow
+## Measurement workflow
 
-1. **Drop an image** onto the grey upload zone (or click to browse)
+1. **Drop an image** onto the upload zone (or click Browse)
 2. **Click two points** on the canvas to draw a measurement line
-3. **Right-click a line** → *Aseta referenssiksi* → type the real-world length in mm
-4. All lines now show their length in mm
+3. **Right-click a line** → *Aseta referenssiksi* → enter the real-world length in mm
+4. All lines now display their length in mm automatically
 5. Click **Tunnista** to auto-detect objects, or **Käsi** to measure a hand
-6. Export results as CSV with ⬇ **Vie CSV**
+6. Use **Ctrl+Z** / **Ctrl+Y** to undo or redo any change
+7. Click **Vie CSV** to export all measurements as a spreadsheet
 
 ---
 
-## 🏗️ Project layout
+## Project layout
 
 ```
 kuvasta_mitat/
-├── index.html              Single-page app entry
-├── style.css               Dark-mode design system
+├── index.html                 Single-page app entry point
+├── style.css                  Dark-mode design system (CSS variables)
+├── sw.js                      Service Worker — cache-first PWA
+├── public/
+│   └── manifest.json          Web App Manifest (installable PWA)
 ├── src/
-│   ├── app.js              Main orchestrator (wires all modules)
-│   ├── upload.js           HTML5 File API + drag & drop
-│   ├── canvas-ruler.js     Interactive Canvas measurement overlay
-│   ├── measurer.js         px → mm conversion, CSV export
-│   ├── detector.js         TF.js object + hand detection
-│   └── results.js          Results table + Chart.js bar chart
+│   ├── app.js                 Main orchestrator — wires all modules
+│   ├── upload.js              HTML5 File API + drag & drop handler
+│   ├── canvas-ruler.js        Interactive Canvas overlay, DPR-aware
+│   ├── measurer.js            Pure functions: px→mm, CSV, formatting
+│   ├── detector.js            WorkerDetector + ObjectDetector fallback
+│   ├── worker-detector.js     Web Worker entry (TF.js off-thread)
+│   ├── history.js             Undo/redo stack with deep-clone snapshots
+│   ├── image-utils.js         resizeIfNeeded, toImageData, formatBytes
+│   └── results.js             Results table + Chart.js bar chart
 ├── tests/
-│   ├── test_measurer.js    Pure-function tests (100% coverage)
-│   └── test_canvas_ruler.js Canvas ruler unit tests
-├── vitest.config.js
-└── package.json
+│   ├── test_measurer.js       Pure-function unit tests (100% coverage)
+│   ├── test_canvas_ruler.js   Canvas ruler tests (mock canvas/ctx)
+│   ├── test_history.js        History class tests (100% coverage)
+│   ├── test_image_utils.js    Image utility tests (100% coverage)
+│   ├── test_worker_detector.js Skin segmentation logic tests
+│   └── e2e/
+│       └── upload.spec.js     Playwright E2E: upload, draw, export
+├── vitest.config.js           100% branch coverage enforced
+├── playwright.config.js       Chromium + Firefox E2E
+├── package.json
+└── .github/workflows/ci.yml   GitHub Actions CI
 ```
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ```bash
 npm install
-npm test                # Vitest + V8 coverage
-npm run test:ui         # Browser-based test UI
+
+# Unit tests (Vitest + V8 coverage — must pass 100%)
+npm test
+
+# End-to-end tests (Playwright, Chromium + Firefox)
+npm run test:e2e
 ```
 
-Coverage is enforced at **100%** for all pure logic modules.
+Coverage is enforced at **100% branches** for all pure logic modules. CI fails if coverage drops.
 
 ---
 
-## 🎛️ Osatehtävät (Task breakdown)
+## Architecture decisions
 
-| Osatehtävä | Vaikeus | Status |
+| Decision | Rationale |
+|---|---|
+| Web Worker for TF.js | Keeps main thread free; canvas stays interactive during 400 ms inference |
+| Deep-clone undo history | Mutations to restored state never corrupt the history stack |
+| `resizeIfNeeded` before Worker | Prevents OOM on mobile for high-res images |
+| Cache-first Service Worker | App opens in < 100 ms on repeat visits, works fully offline |
+| No build step | Ships ES modules directly; zero toolchain to maintain |
+| jsdom + Vitest | Fast unit tests with real DOM APIs, no browser launch needed |
+
+---
+
+## CI / CD
+
+```
+push / PR
+  │
+  ├── unit-tests     npm test (Vitest, 100% coverage)
+  ├── e2e-tests      Playwright on Chromium + Firefox
+  └── (optional)     Docker build smoke test
+```
+
+---
+
+## Implemented
+
+- Image upload and display in browser
+- Drawable measurement lines (Canvas API)
+- Pixel-to-mm conversion via reference object
+- Automatic reference detection via ML (TF.js COCO-SSD)
+- Hand measurement via skin-tone segmentation
+- Live results panel and CSV export (Chart.js)
+- Web Worker off-thread inference
+- Undo / Redo with history stack
+- Large-image auto-resize
+- PWA / offline support
+
+---
+
+## Runtime dependencies
+
+Zero npm runtime dependencies. All libraries load from CDN:
+
+| Library | Version | Purpose |
 |---|---|---|
-| Kuvan lataus ja näyttö selaimessa | Aloittelija | ✅ |
-| Piirrettävien mittausviivojen toteutus (Canvas) | Aloittelija/Keskitaso | ✅ |
-| Pikselien muuntaminen fyysisiksi mitoiksi referenssin avulla | Keskitaso | ✅ |
-| Automaattinen referenssin tunnistus ML:n avulla (TF.js COCO-SSD) | Taitava | ✅ |
-| Käden mittaaminen automaattisesti (ihonsävy-segmentointi) | Taitava | ✅ |
-| UI/UX parannukset ja tulosten visuaalinen esitys (Chart.js) | Keskitaso | ✅ |
+| TensorFlow.js | 4.x | ML inference engine |
+| COCO-SSD | 2.x | Object detection model |
+| Chart.js | 4.x | Results bar chart |
 
 ---
 
-## 📦 Runtime dependencies
-
-Zero npm runtime dependencies. Everything loads via CDN:
-
-| Library | Purpose | CDN |
-|---|---|---|
-| TensorFlow.js | ML inference | cdn.jsdelivr.net |
-| COCO-SSD | Object detection model | cdn.jsdelivr.net |
-| Chart.js | Results bar chart | cdn.jsdelivr.net |
-
----
-
-## 📄 License
+## License
 
 MIT
